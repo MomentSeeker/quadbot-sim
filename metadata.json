@@ -1,0 +1,5 @@
+{
+  "name": "QuadBot Sim",
+  "description": "A 3D simulation of an 8-servo quadraped robot with kinematics based on Python code.",
+  "requestFramePermissions": []
+}
