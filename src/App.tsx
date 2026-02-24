@@ -2,16 +2,26 @@ import React, { useMemo, useState } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, ContactShadows } from '@react-three/drei';
 import * as THREE from 'three';
-import { Play, RotateCcw, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Activity, Hand, ShieldAlert, Footprints, GraduationCap } from 'lucide-react';
+import { Play, RotateCcw, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Activity, Hand, ShieldAlert, Footprints, GraduationCap, Sparkles, Edit } from 'lucide-react';
 import { RobotAnimator } from './lib/RobotAnimator';
 import { Robot3D } from './components/Robot3D';
 import { GaitVisualizer } from './pages/GaitVisualizer';
+import { ActionGeneratorModal } from './components/ActionGeneratorModal';
+import { ActionParser } from './lib/ActionParser';
+import type { ActionScript } from './lib/ActionParser';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<'simulator' | 'visualizer'>('simulator');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingAction, setEditingAction] = useState<{ id: string, name: string, prompt: string } | null>(null);
 
-  const animator = useMemo(() => new RobotAnimator(), []);
+  const animator = useMemo(() => {
+    const anim = new RobotAnimator();
+    anim.isInfiniteLoop = false;
+    return anim;
+  }, []);
   const [activeAction, setActiveAction] = useState<string>('home');
+  const [dynamicActions, setDynamicActions] = useState<any[]>([]);
 
   const actions = [
     { id: 'home', label: 'Home', icon: RotateCcw, fn: () => animator.home() },
@@ -41,6 +51,45 @@ export default function App() {
     action.fn();
   };
 
+  const handleNewActionGenerated = (actionData: { name: string, script: ActionScript, prompt: string, id?: string }) => {
+    try {
+      // Step 1: Translate semantic DSL → raw servo JS via ActionParser (sandboxed)
+      const rawJsCode = ActionParser.generateAnimScript(actionData.script);
+      console.log("ActionParser generated JS:", rawJsCode);
+
+      // Step 2: Wrap into an executable function
+      const actionFn = new Function('animator', rawJsCode);
+
+      if (actionData.id) {
+        // Update existing action
+        setDynamicActions(prev => prev.map(a =>
+          a.id === actionData.id
+            ? { ...a, label: actionData.name, prompt: actionData.prompt, fn: () => actionFn(animator) }
+            : a
+        ));
+        // Re-trigger the updated action if it was active
+        if (activeAction === actionData.id) {
+          actionFn(animator);
+        }
+      } else {
+        // Add new action
+        const newAction = {
+          id: `custom_${Date.now()}`,
+          label: actionData.name,
+          prompt: actionData.prompt,
+          icon: Sparkles,
+          fn: () => actionFn(animator)
+        };
+        setDynamicActions(prev => [...prev, newAction]);
+        handleAction(newAction);
+      }
+      setEditingAction(null);
+    } catch (e) {
+      console.error("Failed to parse/execute generated action:", e);
+      alert("执行生成的代码时出错：" + e);
+    }
+  };
+
   if (currentView === 'visualizer') {
     return <GaitVisualizer onGoBack={() => setCurrentView('simulator')} />;
   }
@@ -64,7 +113,56 @@ export default function App() {
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-2">
-          <div className="text-[10px] text-slate-400 uppercase tracking-widest mb-4 mt-2 font-bold">Motion Commands</div>
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="w-full flex items-center justify-center space-x-2 px-4 py-3 rounded-lg bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-md hover:shadow-lg hover:from-blue-600 hover:to-indigo-700 transition-all font-semibold"
+          >
+            <Sparkles size={18} />
+            <span>AI 新增动作</span>
+          </button>
+
+          {dynamicActions.length > 0 && (
+            <div className="mt-6 mb-2">
+              <div className="text-[10px] text-blue-500 uppercase tracking-widest mb-3 font-bold">Generated Actions</div>
+              <div className="space-y-2">
+                {dynamicActions.map((action) => {
+                  const Icon = action.icon;
+                  const isActive = activeAction === action.id;
+                  return (
+                    <div
+                      key={action.id}
+                      className={`group w-full flex items-center justify-between rounded-lg transition-all duration-200 border border-blue-100 ${isActive
+                        ? 'bg-blue-50 text-blue-700 shadow-sm'
+                        : 'bg-white text-slate-600 hover:bg-slate-50 hover:text-blue-600'
+                        }`}
+                    >
+                      <button
+                        onClick={() => handleAction(action)}
+                        className="flex-1 flex items-center space-x-3 px-4 py-3 text-left overflow-hidden uppercase"
+                      >
+                        <Icon size={18} className={isActive ? 'text-blue-600' : 'text-slate-400'} />
+                        <span className="text-sm font-semibold truncate">{action.label}</span>
+                      </button>
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingAction({ id: action.id, name: action.label, prompt: action.prompt });
+                          setIsModalOpen(true);
+                        }}
+                        className="p-3 text-slate-400 hover:text-blue-600 transition-colors"
+                        title="编辑动作描述"
+                      >
+                        <Edit size={16} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div className="text-[10px] text-slate-400 uppercase tracking-widest mb-4 mt-6 font-bold">Default Commands</div>
           {actions.map((action) => {
             const Icon = action.icon;
             const isActive = activeAction === action.id;
@@ -129,10 +227,24 @@ export default function App() {
         <div className="absolute top-6 right-6 pointer-events-none">
           <div className="bg-white/80 backdrop-blur border border-slate-200 p-4 rounded-xl shadow-lg">
             <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-1 font-bold">Current Action</div>
-            <div className="text-lg font-bold text-blue-600">{actions.find(a => a.id === activeAction)?.label || 'None'}</div>
+            <div className="text-lg font-bold text-blue-600">
+              {actions.find(a => a.id === activeAction)?.label ||
+                dynamicActions.find(a => a.id === activeAction)?.label ||
+                'None'}
+            </div>
           </div>
         </div>
       </div>
+
+      <ActionGeneratorModal
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setEditingAction(null);
+        }}
+        onActionGenerated={handleNewActionGenerated}
+        initialData={editingAction}
+      />
     </div>
   );
 }
