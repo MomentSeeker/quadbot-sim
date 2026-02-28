@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Mic, Square, Loader2, Sparkles, AlertCircle } from 'lucide-react';
+import { X, Mic, Square, Loader2, Sparkles, AlertCircle, Download } from 'lucide-react';
 import { generateRobotAction } from '../lib/llm';
 import type { ActionScript } from '../lib/ActionParser';
 
@@ -17,6 +17,7 @@ export function ActionGeneratorModal({ isOpen, onClose, onActionGenerated, initi
     const [isGenerating, setIsGenerating] = useState(false);
     const [isRecording, setIsRecording] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [lastScript, setLastScript] = useState<ActionScript | null>(null);
     const recognitionRef = useRef<any>(null);
 
     // Update state when initialData changes
@@ -109,15 +110,15 @@ export function ActionGeneratorModal({ isOpen, onClose, onActionGenerated, initi
         try {
             const result = await generateRobotAction(prompt, apiKey);
             if (result.success) {
+                const finalName = actionName.trim() || prompt.substring(0, 15) + (prompt.length > 15 ? '...' : '');
+                setLastScript(result.script);
+                if (!actionName.trim()) setActionName(finalName);
                 onActionGenerated({
                     id: initialData?.id,
-                    name: actionName.trim() || prompt.substring(0, 15) + (prompt.length > 15 ? '...' : ''),
+                    name: finalName,
                     script: result.script,
                     prompt: prompt
                 });
-                setPrompt('');
-                setActionName('');
-                onClose();
             } else {
                 const errResult = result as { success: false; error: string };
                 setError(errResult.error || "生成失败，未知错误");
@@ -127,6 +128,19 @@ export function ActionGeneratorModal({ isOpen, onClose, onActionGenerated, initi
         } finally {
             setIsGenerating(false);
         }
+    };
+
+    const handleSaveToFile = () => {
+        if (!lastScript) return;
+        const name = actionName.trim() || 'action';
+        const data = { name, prompt, script: lastScript };
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${name.replace(/\s+/g, '_')}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
     };
 
     if (!isOpen) return null;
@@ -207,25 +221,39 @@ export function ActionGeneratorModal({ isOpen, onClose, onActionGenerated, initi
                     )}
                 </div>
 
-                <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
-                    <button
-                        onClick={onClose}
-                        className="px-5 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
-                        disabled={isGenerating}
-                    >
-                        取消
-                    </button>
-                    <button
-                        onClick={handleGenerate}
-                        disabled={isGenerating || !prompt.trim() || !apiKey.trim()}
-                        className="px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:ring-4 focus:ring-blue-300 transition-all flex items-center justify-center min-w-[100px] disabled:opacity-60 disabled:cursor-not-allowed shadow-md"
-                    >
-                        {isGenerating ? (
-                            <><Loader2 size={16} className="animate-spin mr-2" /> 生成中...</>
-                        ) : (
-                            '生成动作'
+                <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-between items-center gap-3">
+                    <div>
+                        {lastScript && (
+                            <button
+                                onClick={handleSaveToFile}
+                                className="px-4 py-2 text-sm font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors flex items-center gap-2"
+                                title="保存为 JSON 文件"
+                            >
+                                <Download size={15} />
+                                保存到文件
+                            </button>
                         )}
-                    </button>
+                    </div>
+                    <div className="flex gap-3">
+                        <button
+                            onClick={onClose}
+                            className="px-5 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+                            disabled={isGenerating}
+                        >
+                            关闭
+                        </button>
+                        <button
+                            onClick={handleGenerate}
+                            disabled={isGenerating || !prompt.trim() || !apiKey.trim()}
+                            className="px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:ring-4 focus:ring-blue-300 transition-all flex items-center justify-center min-w-[100px] disabled:opacity-60 disabled:cursor-not-allowed shadow-md"
+                        >
+                            {isGenerating ? (
+                                <><Loader2 size={16} className="animate-spin mr-2" /> 生成中...</>
+                            ) : (
+                                '生成动作'
+                            )}
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

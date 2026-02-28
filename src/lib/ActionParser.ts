@@ -73,6 +73,24 @@ export class ActionParser {
     }
 
     /**
+     * Converts an ActionScript to the HTTP POST body for the robot's /control endpoint.
+     * Resolves all semantic labels → angle arrays on the sim side.
+     * Robot receives: { command: "customize_action", params: [{duration, angles:[...8...]}] }
+     */
+    static scriptToRobotPayload(script: ActionScript): object {
+        if (!script || !script.steps || !Array.isArray(script.steps)) {
+            throw new Error("Invalid ActionScript: missing steps array.");
+        }
+        return {
+            command: "customize_action",
+            params: script.steps.map(pose => ({
+                duration: (typeof pose.duration === 'number' && pose.duration > 0) ? pose.duration : 500,
+                angles: this.poseToArray(pose),
+            })),
+        };
+    }
+
+    /**
      * Converts a SemanticPose object into the strict 8-length array needed by enqueueMove.
      * Index mapping from animator:
      * 0: FR_Hip, 1: FL_Hip, 2: FL_Knee, 3: FR_Knee, 
@@ -84,7 +102,7 @@ export class ActionParser {
      * 4=BR_Hip, 5=BL_Hip
      * 6=BR_Knee, 7=BL_Knee
      */
-    private static poseToArray(pose: SemanticPose): number[] {
+    static poseToArray(pose: SemanticPose): number[] {
         const arr = new Array(8).fill(90); // default to neutral
 
         // Helper to safely get angle, defaulting to 90 if LLM hallucinates a bad string

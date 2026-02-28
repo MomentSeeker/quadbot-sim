@@ -193,14 +193,24 @@ export class RobotAnimator {
         this.enqueueMove(500, Array(8).fill(90));
     }
 
-    push_up(steps = 3, t = 2000) {
+    push_up(steps = 3, t = 400) {
         this.clearQueue();
-        const z_amp = 40, x_amp = 45, hi = 0, b = 35;
-        const period = Array(8).fill(t);
-        const amplitude = [0, 0, z_amp, z_amp, 0, 0, 0, 0];
-        const offset = [0, 0, -hi, hi, x_amp, -x_amp, b, -b];
-        const phase = [0, 0, 90, -90, 0, 0, 0, 0].map(p => p * Math.PI / 180);
-        this.enqueueOscillate(amplitude, offset, period, phase, steps);
+
+        // 1. Preparation stand (all neutral)
+        this.enqueueMove(500, [90, 90, 90, 90, 90, 90, 90, 90]);
+
+        // Push up cycle
+        for (let i = 0; i < steps; i++) {
+            // 2. Lower front body (hips forward to stretch, knees retracted to lower to ground)
+            // FR, FL hips forward (115), knees retracted (120). Back neutral (90).
+            this.enqueueMove(t, [115, 115, 120, 120, 90, 90, 90, 90]);
+
+            // 3. Push up front body (hips backward to thrust chest up, knees extended to push up)
+            // FR, FL hips backward (65), knees extended (60). Back neutral (90).
+            this.enqueueMove(t, [65, 65, 60, 60, 90, 90, 90, 90]);
+        }
+
+        // 4. Return to home
         this.enqueueMove(500, Array(8).fill(90));
     }
 
